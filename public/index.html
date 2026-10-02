@@ -204,12 +204,9 @@
     <div class="card">
       <h2>📝 تسجيل اسم جديد</h2>
       <div id="message" class="message"></div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom: 0;">
         <input type="text" id="nameInput" placeholder="أدخل اسمك هنا..." autocomplete="off">
         <button id="submitBtn" onclick="addReservation()">تسجيل</button>
-      </div>
-      <div class="form-group" style="margin-bottom: 0;">
-        <input type="password" id="passwordInput" placeholder="كلمة المرور" autocomplete="off">
       </div>
     </div>
 
@@ -221,11 +218,21 @@
         <div class="empty">لا توجد أسماء بعد - سجل الاسم الأول!</div>
       </div>
     </div>
+
+    <!-- Password Input (Bottom) -->
+    <div class="card" style="padding: 15px 20px;">
+      <div id="passMessage" class="message" style="margin-bottom: 10px;"></div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <input type="password" id="passwordInput" placeholder="كلمة المرور" autocomplete="off">
+        <button id="verifyPassBtn" onclick="verifyPassword()">تأكيد</button>
+      </div>
+    </div>
   </div>
 
   <script>
     const API_URL = '/api/reservations';
     const ADMIN_PASS = '290384';
+    let isAdminActive = sessionStorage.getItem('isAdminActive') === 'true';
 
     // Retrieve registered IDs from localStorage
     function getMyRegisteredIds() {
@@ -253,17 +260,69 @@
     }
 
     function hasAdminPassword() {
+      if (isAdminActive) return true;
       const pass = document.getElementById('passwordInput');
       return pass && pass.value.trim() === ADMIN_PASS;
     }
 
+    function verifyPassword() {
+      const pass = document.getElementById('passwordInput');
+      const val = pass ? pass.value.trim() : '';
+
+      if (!val && !isAdminActive) {
+        showPassMessage('الرجاء إدخال كلمة المرور', 'error');
+        return;
+      }
+
+      if (val === ADMIN_PASS || isAdminActive) {
+        isAdminActive = true;
+        sessionStorage.setItem('isAdminActive', 'true');
+        showPassMessage('تم تفعيل الصلاحية بنجاح! يمكنك إضافة وحذف أي اسم الآن ✅', 'success');
+        updateAdminButtonUI();
+        loadReservations();
+      } else {
+        showPassMessage('كلمة المرور غير صحيحة ❌', 'error');
+      }
+    }
+
+    function updateAdminButtonUI() {
+      const btn = document.getElementById('verifyPassBtn');
+      if (btn) {
+        if (isAdminActive) {
+          btn.textContent = 'مُفعّل ✓';
+          btn.style.background = '#27ae60';
+        } else {
+          btn.textContent = 'تأكيد';
+          btn.style.background = '#667eea';
+        }
+      }
+    }
+
+    function showPassMessage(text, type) {
+      const msg = document.getElementById('passMessage');
+      if (!msg) return;
+      msg.textContent = text;
+      msg.className = 'message ' + type;
+      setTimeout(() => {
+        msg.className = 'message';
+      }, 4000);
+    }
+
     // Load reservations on page load and listen to password changes
     document.addEventListener('DOMContentLoaded', () => {
+      updateAdminButtonUI();
       loadReservations();
       const passInput = document.getElementById('passwordInput');
       if (passInput) {
         passInput.addEventListener('input', () => {
-          loadReservations();
+          if (passInput.value.trim() === ADMIN_PASS) {
+            verifyPassword();
+          } else {
+            loadReservations();
+          }
+        });
+        passInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') verifyPassword();
         });
       }
     });
