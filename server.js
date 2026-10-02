@@ -12,14 +12,36 @@ const DATA_FILE = isVercel
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// CORS and Preflight support
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
+// Restore original path if rewritten by Vercel edge
+app.use((req, res, next) => {
+  const matched = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-vercel-matched-path'];
+  if (matched && matched !== req.url) {
+    req.url = matched.split('?')[0];
+  }
+  next();
+});
+
 let inMemoryReservations = [];
 
 // Load reservations from file with in-memory fallback
 function loadReservations() {
   try {
+    const tmpFile = path.join('/tmp', 'reservations.json');
+    const localFile = path.join(__dirname, 'db', 'reservations.json');
     const targetFile = fs.existsSync(DATA_FILE)
       ? DATA_FILE
-      : (fs.existsSync(path.join('/tmp', 'reservations.json')) ? path.join('/tmp', 'reservations.json') : null);
+      : (fs.existsSync(tmpFile) ? tmpFile : (fs.existsSync(localFile) ? localFile : null));
 
     if (targetFile) {
       const data = fs.readFileSync(targetFile, 'utf8');
@@ -52,20 +74,22 @@ function saveReservations(reservations) {
   }
 }
 
-// Serve homepage
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// API: Get all reservations
-app.get('/api/reservations', (req, res) => {
+// Handler functions
+function getAllReservations(req, res) {
   const reservations = loadReservations();
-  res.json(reservations);
-});
+  return res.json(reservations);
+}
 
-// API: Add a reservation
-app.post('/api/reservations', (req, res) => {
-  const { name } = req.body;
+function createReservation(req, res) {
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
+  const { name } = body || {};
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'الاسم مطلوب' });
@@ -87,22 +111,44 @@ app.post('/api/reservations', (req, res) => {
   reservations.push(reservation);
   saveReservations(reservations);
 
-  res.status(201).json(reservation);
-});
+  return res.status(201).json(reservation);
+}
 
-// API: Delete a reservation
-app.delete('/api/reservations/:id', (req, res) => {
-  const id = parseInt(req.params.id);
+function deleteReservationById(req, res, idParam) {
+  const id = parseInt(idParam !== undefined ? idParam : (req.params.id || req.query.id));
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'معرف غير صالح' });
+  }
   let reservations = loadReservations();
   reservations = reservations.filter(r => r.id !== id);
   saveReservations(reservations);
-  res.json({ success: true });
+  return res.json({ success: true });
+}
+
+function clearAllReservations(req, res) {
+  saveReservations([]);
+  return res.json({ success: true });
+}
+
+// Serve homepage
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API: Clear all reservations
-app.delete('/api/reservations', (req, res) => {
-  saveReservations([]);
-  res.json({ success: true });
+// Primary API routes
+app.get('/api/reservations', getAllReservations);
+app.post('/api/reservations', createReservation);
+app.delete('/api/reservations/:id', (req, res) => deleteReservationById(req, res, req.params.id));
+app.delete('/api/reservations', clearAllReservations);
+
+// Aliases for Vercel rewrites to /api or /api/index.js
+app.get(['/api', '/api/index.js', '/api/index', '/reservations'], getAllReservations);
+app.post(['/api', '/api/index.js', '/api/index', '/reservations'], createReservation);
+app.delete(['/api', '/api/index.js', '/api/index', '/reservations'], (req, res) => {
+  if (req.query.id || req.params.id) {
+    return deleteReservationById(req, res, req.query.id || req.params.id);
+  }
+  return clearAllReservations(req, res);
 });
 
 // Start server only when running directly (not on Vercel)
@@ -113,3 +159,9 @@ if (require.main === module) {
 }
 
 module.exports = app;
+module.exports.loadReservations = loadReservations;
+module.exports.saveReservations = saveReservations;
+module.exports.getAllReservations = getAllReservations;
+module.exports.createReservation = createReservation;
+module.exports.deleteReservationById = deleteReservationById;
+module.exports.clearAllReservations = clearAllReservations;
