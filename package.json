@@ -1,0 +1,13 @@
+{
+  "name": "court-reservations",
+  "version": "1.0.0",
+  "description": "حجوزات ملاعب - تسجيل وعرض المشاركين",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

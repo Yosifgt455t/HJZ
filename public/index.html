@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>حجوزات الملعب 🏟️</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+      font-size: 2em;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    .card h2 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 1.4em;
+    }
+
+    .form-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 18px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    button {
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-family: inherit;
+    }
+
+    button:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .btn-danger {
+      background: #e74c3c;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .btn-danger:hover {
+      background: #c0392b;
+    }
+
+    .btn-clear {
+      background: #e67e22;
+      padding: 8px 16px;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .btn-clear:hover {
+      background: #d35400;
+    }
+
+    .message {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      display: none;
+      text-align: center;
+    }
+
+    .message.success {
+      background: #d4edda;
+      color: #155724;
+      display: block;
+    }
+
+    .message.error {
+      background: #f8d7da;
+      color: #721c24;
+      display: block;
+    }
+
+    .participants {
+      margin-top: 20px;
+    }
+
+    .participant {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      transition: all 0.3s;
+    }
+
+    .participant:hover {
+      background: #e9ecef;
+      transform: translateX(-5px);
+    }
+
+    .participant-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .participant-time {
+      font-size: 12px;
+      color: #999;
+      margin-top: 4px;
+    }
+
+    .count {
+      text-align: center;
+      color: white;
+      font-size: 1.1em;
+      margin-bottom: 15px;
+    }
+
+    .count span {
+      font-weight: bold;
+      font-size: 1.3em;
+    }
+
+    .empty {
+      text-align: center;
+      color: #999;
+      padding: 30px;
+      font-size: 1.1em;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1.5em;
+      }
+
+      .form-group {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏟️ نظام حجوزات الملعب</h1>
+
+    <!-- Registration Form -->
+    <div class="card">
+      <h2>📝 تسجيل اسم جديد</h2>
+      <div id="message" class="message"></div>
+      <div class="form-group">
+        <input type="text" id="nameInput" placeholder="أدخل اسمك هنا..." autocomplete="off">
+        <button onclick="addReservation()">تسجيل</button>
+      </div>
+    </div>
+
+    <!-- Participants List -->
+    <div class="card">
+      <div class="count">عدد المشاركين: <span id="count">0</span></div>
+      <h2>👥 الأسماء المسجلة</h2>
+      <div id="participantsList" class="participants">
+        <div class="empty">لا توجد أسماء بعد - سجل الاسم الأول!</div>
+      </div>
+      <button class="btn-clear" onclick="clearAll()" style="display:none" id="clearBtn">🗑️ مسح الكل</button>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = '/api/reservations';
+
+    // Load reservations on page load
+    document.addEventListener('DOMContentLoaded', loadReservations);
+
+    // Add new reservation
+    async function addReservation() {
+      const nameInput = document.getElementById('nameInput');
+      const name = nameInput.value.trim();
+
+      if (!name) {
+        showMessage('الرجاء إدخال اسم', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showMessage(data.error || 'حدث خطأ', 'error');
+          return;
+        }
+
+        nameInput.value = '';
+        showMessage(`تم تسجيل ${name} بنجاح ✅`, 'success');
+        loadReservations();
+      } catch (error) {
+        showMessage('خطأ في الاتصال', 'error');
+      }
+    }
+
+    // Load all reservations
+    async function loadReservations() {
+      try {
+        const response = await fetch(API_URL);
+        const reservations = await response.json();
+        displayReservations(reservations);
+      } catch (error) {
+        console.error('Error loading reservations:', error);
+      }
+    }
+
+    // Display reservations
+    function displayReservations(reservations) {
+      const list = document.getElementById('participantsList');
+      const count = document.getElementById('count');
+      const clearBtn = document.getElementById('clearBtn');
+
+      count.textContent = reservations.length;
+
+      if (reservations.length === 0) {
+        list.innerHTML = '<div class="empty">لا توجد أسماء بعد - سجل الاسم الأول!</div>';
+        clearBtn.style.display = 'none';
+        return;
+      }
+
+      clearBtn.style.display = 'inline-block';
+
+      list.innerHTML = reservations.map(r => `
+        <div class="participant">
+          <div>
+            <div class="participant-name">#${r.id} - ${escapeHtml(r.name)}</div>
+            <div class="participant-time">${new Date(r.createdAt).toLocaleString('ar-SA')}</div>
+          </div>
+          <button class="btn-danger" onclick="deleteReservation(${r.id})">❌</button>
+        </div>
+      `).join('');
+    }
+
+    // Delete reservation
+    async function deleteReservation(id) {
+      if (!confirm('هل تريد حذف هذا المشارك؟')) return;
+
+      try {
+        await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+        loadReservations();
+      } catch (error) {
+        console.error('Error deleting reservation:', error);
+      }
+    }
+
+    // Clear all reservations
+    async function clearAll() {
+      if (!confirm('هل تريد مسح جميع الأسماء؟')) return;
+
+      try {
+        await fetch(API_URL, { method: 'DELETE' });
+        loadReservations();
+        showMessage('تم مسح جميع الأسماء', 'success');
+      } catch (error) {
+        console.error('Error clearing reservations:', error);
+      }
+    }
+
+    // Show message
+    function showMessage(text, type) {
+      const msg = document.getElementById('message');
+      msg.textContent = text;
+      msg.className = 'message ' + type;
+      setTimeout(() => {
+        msg.className = 'message';
+      }, 3000);
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Enter key to submit
+    document.getElementById('nameInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') addReservation();
+    });
+  </script>
+</body>
+</html>
