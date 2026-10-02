@@ -206,7 +206,7 @@
       <div id="message" class="message"></div>
       <div class="form-group">
         <input type="text" id="nameInput" placeholder="أدخل اسمك هنا..." autocomplete="off">
-        <button onclick="addReservation()">تسجيل</button>
+        <button id="submitBtn" onclick="addReservation()">تسجيل</button>
       </div>
     </div>
 
@@ -217,18 +217,44 @@
       <div id="participantsList" class="participants">
         <div class="empty">لا توجد أسماء بعد - سجل الاسم الأول!</div>
       </div>
-      <button class="btn-clear" onclick="clearAll()" style="display:none" id="clearBtn">🗑️ مسح الكل</button>
     </div>
   </div>
 
   <script>
     const API_URL = '/api/reservations';
+    let myRegisteredId = localStorage.getItem('myReservationId') || null;
 
     // Load reservations on page load
     document.addEventListener('DOMContentLoaded', loadReservations);
 
+    // Update form state if user already registered
+    function updateInputState(hasActiveRegistration, registeredName) {
+      const nameInput = document.getElementById('nameInput');
+      const submitBtn = document.getElementById('submitBtn');
+
+      if (hasActiveRegistration) {
+        nameInput.disabled = true;
+        nameInput.placeholder = 'لقد قمت بالتسجيل باسم: ' + registeredName;
+        nameInput.value = '';
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.6';
+        submitBtn.style.cursor = 'not-allowed';
+      } else {
+        nameInput.disabled = false;
+        nameInput.placeholder = 'أدخل اسمك هنا...';
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+      }
+    }
+
     // Add new reservation
     async function addReservation() {
+      if (myRegisteredId) {
+        showMessage('لقد قمت بتسجيل اسمك بالفعل! يمكنك حذف اسمك أولاً.', 'error');
+        return;
+      }
+
       const nameInput = document.getElementById('nameInput');
       const name = nameInput.value.trim();
 
@@ -250,6 +276,11 @@
           showMessage(data.error || 'حدث خطأ', 'error');
           return;
         }
+
+        // Save current user reservation
+        myRegisteredId = String(data.id);
+        localStorage.setItem('myReservationId', myRegisteredId);
+        localStorage.setItem('myReservationName', data.name);
 
         nameInput.value = '';
         showMessage(`تم تسجيل ${name} بنجاح ✅`, 'success');
@@ -274,51 +305,61 @@
     function displayReservations(reservations) {
       const list = document.getElementById('participantsList');
       const count = document.getElementById('count');
-      const clearBtn = document.getElementById('clearBtn');
 
       count.textContent = reservations.length;
 
+      // Check if user's registered name still exists on the server
+      const myItem = myRegisteredId ? reservations.find(r => String(r.id) === String(myRegisteredId)) : null;
+      if (!myItem && myRegisteredId) {
+        myRegisteredId = null;
+        localStorage.removeItem('myReservationId');
+        localStorage.removeItem('myReservationName');
+      }
+
+      updateInputState(Boolean(myItem), myItem ? myItem.name : '');
+
       if (reservations.length === 0) {
         list.innerHTML = '<div class="empty">لا توجد أسماء بعد - سجل الاسم الأول!</div>';
-        clearBtn.style.display = 'none';
         return;
       }
 
-      clearBtn.style.display = 'inline-block';
-
-      list.innerHTML = reservations.map(r => `
+      list.innerHTML = reservations.map(r => {
+        const isMine = myRegisteredId && String(r.id) === String(myRegisteredId);
+        return `
         <div class="participant">
           <div>
-            <div class="participant-name">#${r.id} - ${escapeHtml(r.name)}</div>
+            <div class="participant-name">#${r.id} - ${escapeHtml(r.name)} ${isMine ? '<span style="color:#667eea;font-size:13px;font-weight:normal;">(أنت)</span>' : ''}</div>
             <div class="participant-time">${new Date(r.createdAt).toLocaleString('ar-SA')}</div>
           </div>
-          <button class="btn-danger" onclick="deleteReservation(${r.id})">❌</button>
+          ${isMine ? `<button class="btn-danger" onclick="deleteReservation(${r.id})" title="حذف اسمي">❌</button>` : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
-    // Delete reservation
+    // Delete reservation (only own name)
     async function deleteReservation(id) {
-      if (!confirm('هل تريد حذف هذا المشارك؟')) return;
+      if (String(id) !== String(myRegisteredId)) {
+        showMessage('لا يمكنك حذف إلا اسمك فقط!', 'error');
+        return;
+      }
+
+      if (!confirm('هل تريد حذف اسمك؟')) return;
 
       try {
-        await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-        loadReservations();
+        const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+          myRegisteredId = null;
+          localStorage.removeItem('myReservationId');
+          localStorage.removeItem('myReservationName');
+          showMessage('تم حذف اسمك بنجاح', 'success');
+          loadReservations();
+        } else {
+          showMessage('حدث خطأ أثناء الحذف', 'error');
+        }
       } catch (error) {
         console.error('Error deleting reservation:', error);
-      }
-    }
-
-    // Clear all reservations
-    async function clearAll() {
-      if (!confirm('هل تريد مسح جميع الأسماء؟')) return;
-
-      try {
-        await fetch(API_URL, { method: 'DELETE' });
-        loadReservations();
-        showMessage('تم مسح جميع الأسماء', 'success');
-      } catch (error) {
-        console.error('Error clearing reservations:', error);
+        showMessage('خطأ في الاتصال', 'error');
       }
     }
 
