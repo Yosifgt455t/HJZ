@@ -4,33 +4,58 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'db', 'reservations.json');
+const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_FILE = isVercel
+  ? path.join('/tmp', 'reservations.json')
+  : path.join(__dirname, 'db', 'reservations.json');
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Load reservations from file
+let inMemoryReservations = [];
+
+// Load reservations from file with in-memory fallback
 function loadReservations() {
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf8');
-      return JSON.parse(data);
+    const targetFile = fs.existsSync(DATA_FILE)
+      ? DATA_FILE
+      : (fs.existsSync(path.join('/tmp', 'reservations.json')) ? path.join('/tmp', 'reservations.json') : null);
+
+    if (targetFile) {
+      const data = fs.readFileSync(targetFile, 'utf8');
+      inMemoryReservations = JSON.parse(data);
+      return inMemoryReservations;
     }
   } catch (e) {
-    console.error('Error loading reservations:', e.message);
+    console.warn('Notice reading reservations file:', e.message);
   }
-  return [];
+  return inMemoryReservations;
 }
 
-// Save reservations to file
+// Save reservations to file with safe fallback
 function saveReservations(reservations) {
+  inMemoryReservations = reservations;
   try {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    const dir = path.dirname(DATA_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(DATA_FILE, JSON.stringify(reservations, null, 2), 'utf8');
   } catch (e) {
-    console.error('Error saving reservations:', e.message);
+    // If saving to target file fails (e.g. read-only filesystem on serverless), attempt /tmp
+    try {
+      const tmpFile = path.join('/tmp', 'reservations.json');
+      fs.writeFileSync(tmpFile, JSON.stringify(reservations, null, 2), 'utf8');
+    } catch (tmpError) {
+      console.warn('Saved in memory (filesystem read-only):', tmpError.message);
+    }
   }
 }
+
+// Serve homepage
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // API: Get all reservations
 app.get('/api/reservations', (req, res) => {
