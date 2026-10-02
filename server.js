@@ -80,6 +80,11 @@ app.delete('/api/reservations', (req, res) => {
   res.json({ success: true });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🏟️  Court Reservations server running on http://0.0.0.0:${PORT}`);
-});
+// Start server only when running directly (not on Vercel)
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🏟️  Court Reservations server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+module.exports = app;
